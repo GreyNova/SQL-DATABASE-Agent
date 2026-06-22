@@ -20,8 +20,9 @@ RUN pip install --upgrade pip && pip install .
 # Copy backend app code
 COPY backend/app ./app
 
-# Copy the SQLite database to the container root (matches sqlite:///../amazon_test.db)
-COPY amazon_test.db /amazon_test.db
+# Copy the DB creation script and run it during build (avoid pushing binary files to Hugging Face)
+COPY create_amazon_test_db.py ./
+RUN python create_amazon_test_db.py && mv amazon_test.db /amazon_test.db
 
 # Add non-root user and set permissions
 RUN useradd -m -u 10001 appuser && \

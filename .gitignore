@@ -46,3 +46,7 @@ docker/data/
 *.log
 logs/
 nul
+
+# ---------- Databases ----------
+*.db
+
