@@ -29,11 +29,16 @@ def _build(temperature: float | None, streaming: bool) -> BaseChatModel:
 
         if not settings.openai_api_key:
             raise RuntimeError("OPENAI_API_KEY is not set.")
+        kwargs = {}
+        if settings.openai_api_base:
+            kwargs["openai_api_base"] = settings.openai_api_base
         return ChatOpenAI(
             model=settings.openai_model,
+            api_key=settings.openai_api_key,
             temperature=settings.openai_temperature if temperature is None else temperature,
             timeout=settings.openai_request_timeout,
             streaming=streaming,
+            **kwargs
         )
 
     if provider == "azure_openai":

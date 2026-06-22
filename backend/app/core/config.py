@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     # ---- LLM ----
     llm_provider: Literal["openai", "azure_openai", "anthropic", "gemini"] = "openai"
     openai_api_key: str = ""
+    openai_api_base: str = ""
     openai_model: str = "gpt-4o"
     openai_temperature: float = 0.0
     openai_request_timeout: int = 60
