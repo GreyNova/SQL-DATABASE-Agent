@@ -1,11 +1,37 @@
+"""Mock chat model for local/offline development.
+
+Returns canned SQL + explanations keyed on the question, all written against
+the *actual* amazon_test.db schema:
+    amazon_products(id, product_name, category, price, rating, stock_quantity)
+    amazon_sales(id, product_id, customer_id, sale_date, quantity, total_price)
+
+Use MOCK_LLM=true in .env to avoid spending Gemini quota while iterating on
+the UI / graph / security layer.
+"""
+from __future__ import annotations
+
+import json
+import re
 from typing import Any, List, Optional
+
+from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import SimpleChatModel
 from langchain_core.messages import BaseMessage
-from langchain_core.callbacks.manager import CallbackManagerForLLMRun
-import json
+
+
+def _extract_question(messages: List[BaseMessage], full_text: str) -> str:
+    if "## QUESTION" in full_text:
+        parts = full_text.split("## QUESTION", 1)
+        if len(parts) > 1:
+            return parts[1].strip().split("\n")[0].strip()
+    for m in reversed(messages):
+        if getattr(m, "type", "") == "human":
+            return str(m.content).strip()
+    return ""
+
 
 class MockChatModel(SimpleChatModel):
-    """A mock chat model that mimics LLM responses locally for testing and fallback."""
+    """A deterministic, offline stand-in for the real LLM."""
 
     @property
     def _llm_type(self) -> str:
@@ -18,237 +44,161 @@ class MockChatModel(SimpleChatModel):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> str:
-        # Combine messages into a single text block
-        full_text = "\n".join([str(m.content) for m in messages])
-        
-        # Determine the user's question
-        question = ""
-        if "## QUESTION" in full_text:
-            parts = full_text.split("## QUESTION")
-            if len(parts) > 1:
-                question = parts[1].strip().split("\n")[0].strip()
-        
-        if not question:
-            # Fallback: look for the last human message
-            for m in reversed(messages):
-                if getattr(m, "type", "") == "human":
-                    question = str(m.content)
-                    break
-        
+        full_text = "\n".join(str(m.content) for m in messages)
+        question = _extract_question(messages, full_text)
+        q = question.lower()
+
         is_sql_gen = "DATABASE SCHEMA" in full_text or "## FAILED SQL" in full_text
-        is_explanation = "SQL THAT RAN" in full_text or "RESULTS" in full_text
+        is_explanation = "SQL THAT RAN" in full_text or "## RESULTS" in full_text
 
         if is_sql_gen:
-            q_lower = question.lower()
-            
-            # 0. Amazon mock
-            if "amazon" in q_lower:
-                sql = (
-                    "SELECT product_name, category, price, rating, stock_quantity "
-                    "FROM amazon_products "
-                    "ORDER BY rating DESC "
-                    "LIMIT 10"
-                )
-                rationale = "Query amazon_products table for top rated products."
-                assumptions = []
+            return json.dumps(_build_sql(q, question))
+        if is_explanation:
+            return _build_explanation(q, question)
+        return (
+            "Hello! I am the SQL Database Agent for the Amazon sample data. "
+            "Ask me about products, ratings, sales, revenue, or stock."
+        )
 
-            # 1. Category total sales / revenue
-            elif "total sales" in q_lower or "revenue by category" in q_lower or "highest total sales" in q_lower or "sales revenue" in q_lower:
-                sql = (
-                    "SELECT c.name AS category_name, SUM(oi.quantity * oi.price) AS total_sales "
-                    "FROM order_items oi "
-                    "JOIN products p ON oi.product_id = p.id "
-                    "JOIN categories c ON p.category_id = c.id "
-                    "GROUP BY c.name "
-                    "ORDER BY total_sales DESC"
-                )
-                rationale = "Sum the total price * quantity of order items grouped by category, ordered descending."
-                assumptions = ["Sales is defined as the sum of order_items price * quantity."]
 
-            # 2. Top-rated products in a category
-            elif "top rated" in q_lower or "highest rated" in q_lower or "best rated" in q_lower:
-                if "electronics" in q_lower:
-                    sql = (
-                        "SELECT p.name, p.price, p.average_rating, p.review_count "
-                        "FROM products p "
-                        "JOIN categories c ON p.category_id = c.id "
-                        "WHERE c.name LIKE '%Electronics%' "
-                        "ORDER BY p.average_rating DESC, p.review_count DESC "
-                        "LIMIT 5"
-                    )
-                    rationale = "Select products from Electronics category sorted by average rating and review count."
-                    assumptions = ["Filter is case-insensitive for Electronics category."]
-                else:
-                    sql = (
-                        "SELECT p.name, c.name AS category, p.price, p.average_rating, p.review_count "
-                        "FROM products p "
-                        "JOIN categories c ON p.category_id = c.id "
-                        "ORDER BY p.average_rating DESC, p.review_count DESC "
-                        "LIMIT 5"
-                    )
-                    rationale = "Select products sorted by average rating and review count descending across all categories."
-                    assumptions = []
+# ---------------------------------------------------------------------------
+# SQL generation (returns dict that the generator node parses)
+# ---------------------------------------------------------------------------
+def _build_sql(q: str, question: str) -> dict[str, Any]:
+    sql: str
+    rationale: str
+    assumptions: list[str] = []
 
-            # 3. Rating and price filters (e.g. rated above 4.5 and price less than 1500)
-            elif "rating above" in q_lower or "rated above" in q_lower or "rating higher than" in q_lower:
-                # Extracts potential price limit or uses 1500 as default
-                price_limit = 1500
-                if "less than 1000" in q_lower or "under 1000" in q_lower:
-                    price_limit = 1000
-                elif "less than 500" in q_lower or "under 500" in q_lower:
-                    price_limit = 500
-                
-                sql = (
-                    f"SELECT name, price, average_rating, review_count "
-                    f"FROM products "
-                    f"WHERE average_rating > 4.5 AND price < {price_limit} "
-                    f"ORDER BY price ASC"
-                )
-                rationale = f"Filter products by average_rating > 4.5 and price < {price_limit}, sorted by price ascending."
-                assumptions = []
+    if "revenue by category" in q or "sales by category" in q or "category revenue" in q:
+        sql = (
+            "SELECT p.category, ROUND(SUM(s.total_price), 2) AS revenue "
+            "FROM amazon_sales s JOIN amazon_products p ON s.product_id = p.id "
+            "GROUP BY p.category ORDER BY revenue DESC"
+        )
+        rationale = "Sum line revenue per category via the sales→products join."
+    elif "total sales" in q or "total revenue" in q or "overall revenue" in q or "how much revenue" in q:
+        sql = "SELECT ROUND(SUM(total_price), 2) AS total_revenue FROM amazon_sales"
+        rationale = "Single aggregate over amazon_sales.total_price."
+    elif "revenue by month" in q or "sales by month" in q or "monthly revenue" in q:
+        sql = (
+            "SELECT strftime('%Y-%m', sale_date) AS month, "
+            "ROUND(SUM(total_price), 2) AS revenue "
+            "FROM amazon_sales GROUP BY month ORDER BY month"
+        )
+        rationale = "Bucket sale_date by month and sum revenue."
+        assumptions.append("Uses SQLite strftime; in Postgres use date_trunc.")
+    elif "top selling" in q or "best selling" in q or "top products" in q or "top 10" in q:
+        sql = (
+            "SELECT p.product_name, p.category, SUM(s.quantity) AS units_sold, "
+            "ROUND(SUM(s.total_price), 2) AS revenue "
+            "FROM amazon_sales s JOIN amazon_products p ON s.product_id = p.id "
+            "GROUP BY p.id ORDER BY units_sold DESC LIMIT 10"
+        )
+        rationale = "Rank products by total units sold."
+    elif "top rated" in q or "highest rated" in q or "best rated" in q or "rating" in q:
+        sql = (
+            "SELECT product_name, category, price, rating, stock_quantity "
+            "FROM amazon_products ORDER BY rating DESC, product_name LIMIT 10"
+        )
+        rationale = "Highest customer rating first."
+    elif "low stock" in q or "out of stock" in q or "stock" in q:
+        threshold = _extract_number(q, default=20)
+        sql = (
+            f"SELECT product_name, category, stock_quantity, price "
+            f"FROM amazon_products WHERE stock_quantity <= {threshold} "
+            f"ORDER BY stock_quantity ASC"
+        )
+        rationale = f"Products at or below {threshold} units of stock."
+        assumptions.append(f"Threshold inferred as {threshold}.")
+    elif "spent the most" in q or "top customer" in q or "top buyer" in q or "customer" in q:
+        sql = (
+            "SELECT customer_id, ROUND(SUM(total_price), 2) AS total_spent, "
+            "COUNT(*) AS orders "
+            "FROM amazon_sales GROUP BY customer_id ORDER BY total_spent DESC LIMIT 5"
+        )
+        rationale = "Rank anonymized customers by total spend."
+    elif "category" in q and ("count" in q or "how many" in q or "products" in q):
+        sql = (
+            "SELECT category, COUNT(*) AS product_count, "
+            "ROUND(AVG(rating), 2) AS avg_rating "
+            "FROM amazon_products GROUP BY category ORDER BY product_count DESC"
+        )
+        rationale = "Product count and average rating per category."
+    else:
+        # Safe generic fallback
+        sql = (
+            "SELECT product_name, category, price, rating, stock_quantity "
+            "FROM amazon_products ORDER BY rating DESC LIMIT 10"
+        )
+        rationale = "Default: show top-rated products."
 
-            # 4. Category breakdown of rating / reviews
-            elif "rating and reviews by category" in q_lower or "reviews by category" in q_lower:
-                sql = (
-                    "SELECT c.name AS category_name, AVG(p.average_rating) AS avg_rating, SUM(p.review_count) AS total_reviews "
-                    "FROM products p "
-                    "JOIN categories c ON p.category_id = c.id "
-                    "GROUP BY c.name "
-                    "ORDER BY avg_rating DESC"
-                )
-                rationale = "Group products by category and calculate average rating and sum of review counts."
-                assumptions = []
+    return {"sql": sql, "rationale": rationale, "assumptions": assumptions}
 
-            # 5. Top customers
-            elif "spent the most" in q_lower or "top customers" in q_lower or "top users" in q_lower or "top spending" in q_lower:
-                sql = (
-                    "SELECT u.name, u.email, u.city, SUM(o.total_amount) AS total_spent "
-                    "FROM orders o "
-                    "JOIN users u ON o.user_id = u.id "
-                    "GROUP BY u.id "
-                    "ORDER BY total_spent DESC "
-                    "LIMIT 5"
-                )
-                rationale = "Group orders by user, sum total_amount, order descending, and return top 5."
-                assumptions = ["Includes all order statuses, including pending and shipped."]
 
-            # 6. Count products per category
-            elif "how many products" in q_lower or "product count" in q_lower or "products in each category" in q_lower:
-                sql = (
-                    "SELECT c.name AS category_name, COUNT(p.id) AS product_count "
-                    "FROM products p "
-                    "JOIN categories c ON p.category_id = c.id "
-                    "GROUP BY c.name "
-                    "ORDER BY product_count DESC"
-                )
-            # Default fallback
-            else:
-                sql = "SELECT * FROM products ORDER BY average_rating DESC LIMIT 5"
-                rationale = "Default query showing top 5 products by rating."
-                assumptions = []
+def _extract_number(text: str, default: int) -> int:
+    m = re.search(r"\d+", text)
+    return int(m.group(0)) if m else default
 
-            response_json = {
-                "sql": sql,
-                "rationale": rationale,
-                "assumptions": assumptions
-            }
-            return json.dumps(response_json)
 
-        elif is_explanation:
-            q_lower = question.lower()
-            
-            if "amazon" in q_lower:
-                answer = "Here are the top rated Amazon products from your test database."
-                followups = (
-                    "Show Amazon sales for electronics. | "
-                    "List highest stock Amazon products."
-                )
-            elif "total sales" in q_lower or "revenue by category" in q_lower or "highest total sales" in q_lower or "sales revenue" in q_lower:
-                answer = (
-                    "Based on our sales data, the category with the highest total sales revenue is **Electronics**, "
-                    "which generated the most sales, followed closely by Home & Kitchen and Clothing & Accessories."
-                )
-                followups = (
-                    "Show the top selling products in Electronics | "
-                    "What is the total sales for Books? | "
-                    "List recent orders in Electronics"
-                )
-            elif "top rated" in q_lower or "highest rated" in q_lower or "best rated" in q_lower:
-                if "electronics" in q_lower:
-                    answer = (
-                        "The highest-rated products in the Electronics category are led by the **Premium Keyboard** "
-                        "and **Smart Watch**, which maintain an average rating of 4.6+ based on verified reviews."
-                    )
-                    followups = (
-                        "Show reviews for Premium Keyboard | "
-                        "What is the price of the Smart Watch? | "
-                        "List all Electronics sorted by price"
-                    )
-                else:
-                    answer = (
-                        "Our top-rated products across all categories are led by the **Premium Keyboard** and **Wireless Speaker**, "
-                        "both maintaining a perfect 5.0 rating based on multiple verified reviews."
-                    )
-                    followups = (
-                        "Show reviews for Wireless Speaker | "
-                        "Which category has the highest average rating? | "
-                        "List the top 5 cheapest products"
-                    )
-            elif "rating above" in q_lower or "rated above" in q_lower or "rating higher than" in q_lower:
-                answer = (
-                    "There are several highly-rated products (above 4.5 stars) priced under the selected price limit. "
-                    "This includes budget-friendly items like the **Premium Water Bottle** (4.8 stars) and **Smart Mouse Pad** (4.7 stars)."
-                )
-                followups = (
-                    "List all products under 1000 | "
-                    "Show reviews for Premium Water Bottle | "
-                    "What is the highest rated product under 500?"
-                )
-            elif "rating and reviews by category" in q_lower or "reviews by category" in q_lower:
-                answer = (
-                    "The category with the highest average rating is **Books** (average rating of 4.45), "
-                    "while the category with the most customer reviews is **Electronics**."
-                )
-                followups = (
-                    "Show the top products in Books | "
-                    "Which category has the lowest average rating? | "
-                    "List all categories with product counts"
-                )
-            elif "spent the most" in q_lower or "top customers" in q_lower or "top users" in q_lower or "top spending" in q_lower:
-                answer = (
-                    "Our top spending customer is **Aarav Sharma** from Mumbai, who spent the highest aggregate total "
-                    "across multiple orders. The other top spenders are Diya Patel and Rohan Verma."
-                )
-                followups = (
-                    "List all orders placed by Aarav Sharma | "
-                    "Which city has the highest total spending? | "
-                    "Show average spending per customer"
-                )
-            elif "how many products" in q_lower or "product count" in q_lower or "products in each category" in q_lower:
-                answer = (
-                    "We have a balanced catalog with exactly **20 products** in each of our 6 categories, "
-                    "for a total of 120 products in the database."
-                )
-                followups = (
-                    "List all products in Electronics | "
-                    "Show products with stock below 10 | "
-                    "What is the total inventory value of our catalog?"
-                )
-            elif "amazon" in q_lower:
-                answer = "Here are the top rated Amazon products from your test database."
-                followups = (
-                    "Show Amazon sales for electronics. | "
-                    "List highest stock Amazon products."
-                )
-            else:
-                answer = "Here is the query result showing the requested data from the database. See the details in the table below."
-                followups = (
-                    "Show the top selling products. | "
-                    "List the most recent orders. | "
-                    "What is our total revenue?"
-                )
+# ---------------------------------------------------------------------------
+# Explanation
+# ---------------------------------------------------------------------------
+def _build_explanation(q: str, question: str) -> str:
+    if "revenue by category" in q or "sales by category" in q:
+        answer = (
+            "Electronics is the top-revenue category, followed by Home & Kitchen "
+            "and Clothing. The bar chart shows the full breakdown — Electronics "
+            "alone accounts for the largest share of total sales."
+        )
+        follow = "Top selling products in Electronics | Revenue by month | Lowest revenue category"
+    elif "total sales" in q or "total revenue" in q or "overall revenue" in q or "how much revenue" in q:
+        answer = (
+            "Total revenue across all recorded sales is shown as a single KPI. "
+            "This is the sum of every line item in amazon_sales."
+        )
+        follow = "Revenue by category | Revenue by month | Top selling products"
+    elif "revenue by month" in q or "sales by month" in q or "monthly revenue" in q:
+        answer = (
+            "Revenue trends upward across the recorded months, with a clear peak "
+            "in the most recent period. The line chart makes the month-over-month "
+            "growth visible at a glance."
+        )
+        follow = "Which month had the highest revenue? | Revenue by category | Top selling products"
+    elif "top selling" in q or "best selling" in q or "top products" in q or "top 10" in q:
+        answer = (
+            "The best-selling products by units are led by a handful of Electronics "
+            "and Books items. The table ranks all ten, with units sold and revenue."
+        )
+        follow = "Revenue by category | Show low stock products | Top rated products"
+    elif "top rated" in q or "highest rated" in q or "best rated" in q or "rating" in q:
+        answer = (
+            "The highest-rated products sit at the top of the rating scale (near 5.0). "
+            "The table lists the top ten with their category, price, and stock."
+        )
+        follow = "Top rated products under ₹1000 | Top selling products | Low stock products"
+    elif "low stock" in q or "out of stock" in q or "stock" in q:
+        answer = (
+            "Several products are running low on inventory. The table lists them "
+            "from the most depleted upward — these are good candidates for restocking."
+        )
+        follow = "Top selling products | Revenue by category | Products that are both low stock and top selling"
+    elif "spent the most" in q or "top customer" in q or "top buyer" in q or "customer" in q:
+        answer = (
+            "The top-spending customer (by anonymized id) is shown first, with their "
+            "total spend and order count. The next four customers round out the top five."
+        )
+        follow = "Average spend per customer | Revenue by category | Top selling products"
+    elif "category" in q:
+        answer = (
+            "The catalog is spread across several categories. The table shows how many "
+            "products each category holds plus its average rating."
+        )
+        follow = "Revenue by category | Top rated products | Low stock products"
+    else:
+        answer = (
+            "Here are the top-rated products from the catalog. The table shows name, "
+            "category, price, rating, and stock for each."
+        )
+        follow = "Top selling products | Revenue by category | Low stock products"
 
-            return f"{answer}\n\nFOLLOWUPS: {followups}"
-
-        else:
-            return "Hello! I am the SQL Database Agent. Ask me anything about your database."
+    return f"{answer}\n\nFOLLOWUPS: {follow}"

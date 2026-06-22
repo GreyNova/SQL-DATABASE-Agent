@@ -10,12 +10,14 @@ from typing import Any
 
 from app.graph.nodes._common import make_step, timed
 from app.graph.state import AgentState
-from app.services.schema_service import schema_service
+from app.services.schema_service import ALLOWED_TABLES, schema_service
 
 
 def schema_discovery_node(state: AgentState) -> dict[str, Any]:
     with timed() as t:
-        ddl = schema_service().get_ddl()
+        svc = schema_service()
+        ddl = svc.get_ddl()
+        tables = list(ALLOWED_TABLES)
 
     return {
         "schema_ddl": ddl,
@@ -24,8 +26,8 @@ def schema_discovery_node(state: AgentState) -> dict[str, Any]:
             make_step(
                 "schema_discovery",
                 "ok",
-                "Loaded schema for 4 tables.",
-                {"tables": ["users", "products", "orders", "order_items"]},
+                f"Loaded schema for {len(tables)} tables.",
+                {"tables": tables},
                 t["duration_ms"],
             )
         ],

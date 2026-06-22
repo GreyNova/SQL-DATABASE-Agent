@@ -1,69 +1,46 @@
 """Schema discovery service.
 
-Caches the live schema (from information_schema) so we never hammer the catalog,
-and exposes a compact, hand-curated DDL string we feed to the LLM prompt for
-token efficiency and stability.
+Dialect-agnostic: uses SQLAlchemy's `inspect()` so it works on both SQLite
+(local) and PostgreSQL (production). Caches the live schema so we never hammer
+the catalog, and exposes a compact DDL string we feed to the LLM prompt.
 """
 from __future__ import annotations
 
 import time
 
-from sqlalchemy import text
+from sqlalchemy import inspect
 
-from app.core.db import readonly_session
+from app.core.db import readonly_engine
 
 # The agent is scoped to these tables only.
-ALLOWED_TABLES: tuple[str, ...] = ("users", "products", "orders", "order_items")
+ALLOWED_TABLES: tuple[str, ...] = ("amazon_products", "amazon_sales")
 
-_SCHEMA_QUERY = """
-SELECT c.table_name, c.column_name, c.data_type, c.is_nullable, c.column_default
-FROM information_schema.columns c
-WHERE c.table_schema = 'public'
-  AND c.table_name = ANY(:tables)
-ORDER BY c.table_name, c.ordinal_position;
-"""
-
-# Compact, human/LLM-readable DDL shipped to prompts instead of the live catalog
-# (fewer tokens, stable shape, hides irrelevant columns).
+# Compact, LLM-readable DDL shipped to prompts for token efficiency & stability.
+# Mirrors the actual amazon_test.db schema.
 _CANONICAL_DDL = """
-CREATE TABLE users (
-    id          BIGINT PRIMARY KEY,
-    name        TEXT,
-    email       TEXT,
-    city        TEXT,
-    created_at  TIMESTAMPTZ
+CREATE TABLE amazon_products (
+    id              INTEGER PRIMARY KEY,
+    product_name    TEXT,         -- display name of the product
+    category        TEXT,         -- e.g. Electronics, Books, Clothing & Accessories, …
+    price           REAL,         -- current unit price in INR
+    rating          REAL,         -- average customer rating (1.0 - 5.0)
+    stock_quantity  INTEGER       -- units currently in stock
 );
 
-CREATE TABLE products (
-    id          BIGINT PRIMARY KEY,
-    name        TEXT,
-    category    TEXT,
-    price       NUMERIC(12,2),
-    stock       INTEGER
-);
-
-CREATE TABLE orders (
-    id            BIGINT PRIMARY KEY,
-    user_id       BIGINT REFERENCES users(id),
-    order_date    TIMESTAMPTZ,
-    total_amount  NUMERIC(12,2),
-    status        TEXT          -- pending|paid|shipped|delivered|cancelled|refunded
-);
-
-CREATE TABLE order_items (
-    id          BIGINT PRIMARY KEY,
-    order_id    BIGINT REFERENCES orders(id),
-    product_id  BIGINT REFERENCES products(id),
-    quantity    INTEGER,
-    price       NUMERIC(12,2)   -- unit price at time of order
+CREATE TABLE amazon_sales (
+    id            INTEGER PRIMARY KEY,
+    product_id    INTEGER,        -- -> amazon_products.id
+    customer_id   INTEGER,        -- anonymized customer identifier
+    sale_date     TEXT,           -- ISO date string 'YYYY-MM-DD'
+    quantity      INTEGER,        -- units sold in this transaction
+    total_price   REAL            -- line revenue = quantity * unit price at sale time
 );
 
 -- Relationships:
---   orders.user_id         -> users.id
---   order_items.order_id   -> orders.id
---   order_items.product_id -> products.id
--- Revenue = SUM(orders.total_amount) where status NOT IN ('cancelled','refunded')
---           (equivalently SUM(order_items.quantity * order_items.price)).
+--   amazon_sales.product_id  -> amazon_products.id
+-- Revenue   = SUM(amazon_sales.total_price)
+-- Units sold = SUM(amazon_sales.quantity)
+-- Top products = GROUP BY amazon_products.name / category
 """
 
 
@@ -80,19 +57,18 @@ class SchemaService:
         return _CANONICAL_DDL
 
     def get_live_schema(self) -> dict[str, list[dict[str, str]]]:
-        """Return {table: [{column, type, nullable}, ...]} from the catalog."""
+        """Return {table: [{column, type, nullable}, ...]} via SQLAlchemy introspection."""
         if time.time() - self._cached_at < self._ttl and self._live_cache:
             return self._live_cache
-
-        from sqlalchemy import inspect
-        from app.core.db import readonly_engine
 
         out: dict[str, list[dict[str, str]]] = {t: [] for t in ALLOWED_TABLES}
         try:
             inspector = inspect(readonly_engine)
+            available = set(inspector.get_table_names())
             for table_name in ALLOWED_TABLES:
-                columns = inspector.get_columns(table_name)
-                for col in columns:
+                if table_name not in available:
+                    continue
+                for col in inspector.get_columns(table_name):
                     out[table_name].append(
                         {
                             "column": col["name"],
