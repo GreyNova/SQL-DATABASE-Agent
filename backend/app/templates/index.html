@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Database Agent</title>
+    <!-- Modern Premium Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-primary: #030712;
+            --card-bg: rgba(17, 24, 39, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --accent-primary: #6366f1;
+            --accent-secondary: #a855f7;
+            --text-main: #f9fafb;
+            --text-muted: #9ca3af;
+            --success: #10b981;
+            --error: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.15) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-main);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow-x: hidden;
+        }
+
+        /* Container Layout */
+        .app-container {
+            width: 100%;
+            max-width: 900px;
+            padding: 2.5rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        /* Premium Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+        }
+
+        .logo-section h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #a5b4fc, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.03em;
+        }
+
+        .logo-section p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        .reset-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 0.6rem 1.2rem;
+            border-radius: 9999px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .reset-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        /* Glassmorphic Cards */
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 1.75rem;
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        /* Composer/Input Section */
+        .composer-box {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            position: relative;
+        }
+
+        .composer-input-wrapper {
+            position: relative;
+            display: flex;
+            width: 100%;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100px;
+            background: rgba(17, 24, 39, 0.8);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            color: var(--text-main);
+            padding: 1rem;
+            padding-right: 3.5rem;
+            font-family: inherit;
+            font-size: 1rem;
+            resize: none;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        textarea:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+        }
+
+        .send-btn {
+            position: absolute;
+            right: 0.75rem;
+            bottom: 0.75rem;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .send-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 18px rgba(99, 102, 241, 0.4);
+        }
+
+        .send-btn:disabled {
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        .send-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: white;
+            transition: transform 0.3s ease;
+        }
+
+        .send-btn:hover svg {
+            transform: translate(2px, -2px);
+        }
+
+        /* Thought Stream Panel */
+        .thought-stream {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .thought-stream-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .thought-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            font-size: 0.9rem;
+            animation: fadeIn 0.4s ease forwards;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .step-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+
+        .step-icon.running {
+            border: 2px solid var(--accent-primary);
+            border-top-color: transparent;
+            animation: spin 0.8s linear infinite;
+        }
+
+        .step-icon.ok {
+            background-color: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .step-icon.error {
+            background-color: var(--error);
+            box-shadow: 0 0 8px var(--error);
+        }
+
+        .step-content {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+            flex-grow: 1;
+        }
+
+        .step-message {
+            font-weight: 500;
+        }
+
+        .step-duration {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Answer Section styling */
+        .answer-card {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .answer-text {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            color: #f3f4f6;
+        }
+
+        /* SQL Terminal block */
+        .sql-box {
+            background: #090d16;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            font-family: 'JetBrains Mono', monospace;
+            padding: 1.25rem;
+            position: relative;
+            overflow-x: auto;
+            font-size: 0.9rem;
+        }
+
+        .sql-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.5rem;
+        }
+
+        .sql-code {
+            color: #818cf8;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* Table Styling */
+        .table-container {
+            width: 100%;
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            background: rgba(17, 24, 39, 0.4);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        th {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--text-main);
+            padding: 0.85rem 1rem;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        td {
+            padding: 0.85rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            color: #d1d5db;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--text-main);
+        }
+
+        /* Followups */
+        .followups-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .followups-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .followups-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+        }
+
+        .followup-pill {
+            background: rgba(99, 102, 241, 0.08);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+            padding: 0.5rem 1.1rem;
+            border-radius: 9999px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .followup-pill:hover {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.4);
+            color: white;
+            transform: translateY(-1px);
+        }
+
+        /* Loading shimmer */
+        .shimmer {
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 10px;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* Helper Classes */
+        .hidden {
+            display: none !important;
+        }
+
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem 1.5rem;
+            text-align: center;
+            color: var(--text-muted);
+            gap: 1rem;
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.8; }
+        }
+    </style>
+    <script>
+        // Global error catcher to display any javascript failures directly in the UI
+        window.onerror = function(message, source, lineno, colno, error) {
+            const boundary = document.getElementById('js-error-boundary');
+            const msgSpan = document.getElementById('js-error-msg');
+            if (boundary && msgSpan) {
+                boundary.style.display = 'block';
+                msgSpan.innerText = `${message} (at ${source}:${lineno}:${colno})`;
+            }
+            console.error(message, source, lineno, colno, error);
+            return false;
+        };
+    </script>
+</head>
+<body>
+    <!-- Global JS Error alert -->
+    <div id="js-error-boundary" style="display: none; background: #ef4444; color: white; padding: 1rem; position: fixed; top: 0; left: 0; width: 100%; z-index: 99999; text-align: center; font-weight: 600; font-size: 1.1rem; box-shadow: 0 4px 10px rgba(0,0,0,0.3); font-family: system-ui, sans-serif;">
+        ⚠ FRONTEND ERROR: <span id="js-error-msg"></span>
+    </div>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header>
+            <div class="logo-section">
+                <h1>SQL Database Agent</h1>
+                <p>Natural Language to SQL Database Assistant</p>
+            </div>
+            <button class="reset-btn" id="reset-btn" title="Clear chat history and start a new thread">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+                New Thread
+            </button>
+        </header>
+
+        <!-- Composer Card -->
+        <div class="glass-card">
+            <div class="composer-box">
+                <div class="composer-input-wrapper">
+                    <textarea id="question-input" placeholder="Ask a question about users, products, orders, or sales..."></textarea>
+                    <button class="send-btn" id="send-btn" title="Send question">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Thought Stream Live Card -->
+        <div class="glass-card hidden" id="thought-stream-card">
+            <div class="thought-stream">
+                <div class="thought-stream-title">Thought Stream</div>
+                <div id="steps-container"></div>
+            </div>
+        </div>
+
+        <!-- Answer / Results Card -->
+        <div class="glass-card hidden" id="answer-card">
+            <div class="answer-card">
+                <!-- Direct Text Answer -->
+                <div class="answer-text" id="answer-text"></div>
+
+                <!-- Executed SQL Box -->
+                <div class="sql-box" id="sql-box">
+                    <div class="sql-header">
+                        <span>GENERATED SQL QUERY</span>
+                        <span style="color: var(--success); font-weight: 500;">READ-ONLY VALIDATED</span>
+                    </div>
+                    <div class="sql-code" id="sql-code"></div>
+                </div>
+
+                <!-- Query Result Table -->
+                <div class="table-container" id="table-container">
+                    <table id="result-table">
+                        <thead id="table-head"></thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
+
+                <!-- Follow-up Questions -->
+                <div class="followups-section hidden" id="followups-section">
+                    <div class="followups-title">Suggested Follow-ups</div>
+                    <div class="followups-list" id="followups-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="glass-card" id="empty-state">
+            <div class="empty-state">
+                <div class="empty-state-icon">💬</div>
+                <h3>Ask anything about your sales database</h3>
+                <p>For example: "Show me the top 3 best selling products by revenue" or "What is our average order value in Delhi?"</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Frontend logic with real-time SSE parsing -->
+    <script>
+        const input = document.getElementById('question-input');
+        const sendBtn = document.getElementById('send-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const emptyState = document.getElementById('empty-state');
+        
+        const thoughtCard = document.getElementById('thought-stream-card');
+        const stepsContainer = document.getElementById('steps-container');
+        
+        const answerCard = document.getElementById('answer-card');
+        const answerText = document.getElementById('answer-text');
+        const sqlCode = document.getElementById('sql-code');
+        const sqlBox = document.getElementById('sql-box');
+        
+        const tableContainer = document.getElementById('table-container');
+        const tableHead = document.getElementById('table-head');
+        const tableBody = document.getElementById('table-body');
+        
+        const followupsSection = document.getElementById('followups-section');
+        const followupsList = document.getElementById('followups-list');
+        
+        let apiBase = "";
+        if (window.location.protocol === "file:") {
+            apiBase = "http://localhost:8000";
+            console.warn("HTML opened directly via file://. Setting API base to http://localhost:8000");
+        }
+
+        let threadId = null;
+        try {
+            threadId = localStorage.getItem('agent_thread_id') || null;
+        } catch (e) {
+            console.warn("localStorage is blocked or unavailable:", e);
+        }
+
+        // Auto-focus input on page load
+        input.focus();
+
+        // Clear local thread ID to start new session
+        resetBtn.addEventListener('click', () => {
+            threadId = null;
+            try {
+                localStorage.removeItem('agent_thread_id');
+            } catch (e) {
+                console.warn("Could not clear localStorage:", e);
+            }
+            input.value = '';
+            
+            // UI Cleanup
+            thoughtCard.classList.add('hidden');
+            answerCard.classList.add('hidden');
+            emptyState.classList.remove('hidden');
+            stepsContainer.innerHTML = '';
+            
+            const notify = document.createElement('div');
+            notify.style.position = 'fixed';
+            notify.style.bottom = '20px';
+            notify.style.background = 'rgba(16, 185, 129, 0.9)';
+            notify.style.color = '#fff';
+            notify.style.padding = '0.75rem 1.5rem';
+            notify.style.borderRadius = '9999px';
+            notify.style.fontSize = '0.9rem';
+            notify.style.fontWeight = '500';
+            notify.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.3)';
+            notify.style.transition = 'opacity 0.5s ease';
+            notify.innerText = 'New thread initialized';
+            document.body.appendChild(notify);
+            
+            setTimeout(() => {
+                notify.style.opacity = '0';
+                setTimeout(() => notify.remove(), 500);
+            }, 2000);
+        });
+
+        // Trigger send on Enter (without Shift)
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendQuestion();
+            }
+        });
+
+        sendBtn.addEventListener('click', sendQuestion);
+
+        function askQuestion(q) {
+            input.value = q;
+            sendQuestion();
+        }
+
+        async function sendQuestion() {
+            const question = input.value.trim();
+            if (!question) return;
+
+            // UI loading state
+            input.disabled = true;
+            sendBtn.disabled = true;
+            emptyState.classList.add('hidden');
+            answerCard.classList.add('hidden');
+            
+            // Show thought stream container
+            thoughtCard.classList.remove('hidden');
+            stepsContainer.innerHTML = '';
+            
+            // Add a temporary running step
+            addThoughtStep('agent', 'running', 'Agent is analyzing question...');
+
+            try {
+                const response = await fetch(`${apiBase}/chat/stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question, thread_id: threadId })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server returned HTTP ${response.status}`);
+                }
+
+                if (!response.body) {
+                    throw new Error("ReadableStream is not supported by the response body in this browser.");
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let buffer = '';
+
+                // Remove temp running step
+                stepsContainer.innerHTML = '';
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split(/\r?\n\r?\n/);
+                    buffer = parts.pop();
+
+                    for (const part of parts) {
+                        if (!part.trim()) continue;
+
+                        const lines = part.split(/\r?\n/);
+                        let event = 'message';
+                        let data = '';
+
+                        for (const line of lines) {
+                            if (line.startsWith('event:')) {
+                                event = line.replace('event:', '').trim();
+                            } else if (line.startsWith('data:')) {
+                                data = line.replace('data:', '').trim();
+                            }
+                        }
+
+                        if (event === 'step') {
+                            const step = JSON.parse(data);
+                            addOrUpdateThoughtStep(step);
+                        } else if (event === 'done') {
+                            const result = JSON.parse(data);
+                            renderResult(result);
+                        } else if (event === 'error') {
+                            const error = JSON.parse(data);
+                            showError(error.detail || error.error);
+                        }
+                    }
+                }
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                input.disabled = false;
+                sendBtn.disabled = false;
+                input.focus();
+            }
+        }
+
+        // Render nodes and steps
+        function addThoughtStep(node, status, message, durationMs) {
+            try {
+                const stepDiv = document.createElement('div');
+                stepDiv.className = 'thought-step';
+                stepDiv.id = `step-node-${node}`;
+
+                const iconSpan = document.createElement('span');
+                iconSpan.className = `step-icon ${status}`;
+
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'step-content';
+
+                const msgSpan = document.createElement('span');
+                msgSpan.className = 'step-message';
+                msgSpan.innerText = message || '';
+
+                contentDiv.appendChild(msgSpan);
+
+                if (durationMs !== undefined && durationMs !== null) {
+                    const durSpan = document.createElement('span');
+                    durSpan.className = 'step-duration';
+                    durSpan.innerText = `${durationMs}ms`;
+                    contentDiv.appendChild(durSpan);
+                }
+
+                stepDiv.appendChild(iconSpan);
+                stepDiv.appendChild(contentDiv);
+                stepsContainer.appendChild(stepDiv);
+                
+                // Auto scroll to bottom of steps
+                thoughtCard.scrollTop = thoughtCard.scrollHeight;
+            } catch (e) {
+                console.error("Error in addThoughtStep:", e);
+            }
+        }
+
+        function addOrUpdateThoughtStep(step) {
+            // Map internal node IDs to friendly messages
+            const nodeNames = {
+                'schema_discovery': 'Inspecting Database Schema',
+                'sql_generator': 'Generating SQL Statement',
+                'sql_validator': 'Validating Safety Guardrails',
+                'query_executor': 'Running SQL Query',
+                'sql_repair': 'Repairing Failing Query',
+                'result_explainer': 'Explaining Results'
+            };
+
+            const friendlyName = nodeNames[step.node] || step.node;
+            const existing = document.getElementById(`step-node-${step.node}`);
+
+            if (existing) {
+                try {
+                    const icon = existing.querySelector('.step-icon');
+                    icon.className = `step-icon ${step.status}`;
+                    
+                    const msg = existing.querySelector('.step-message');
+                    msg.innerText = `${friendlyName}: ${step.message}`;
+
+                    const content = existing.querySelector('.step-content');
+                    let dur = content.querySelector('.step-duration');
+                    if (step.duration_ms !== null) {
+                        if (!dur) {
+                            dur = document.createElement('span');
+                            dur.className = 'step-duration';
+                            content.appendChild(dur);
+                        }
+                        dur.innerText = `${step.duration_ms}ms`;
+                    }
+                } catch (e) {
+                    console.error("Error updating thought step:", e);
+                }
+            } else {
+                // Add new
+                addThoughtStep(step.node, step.status, `${friendlyName}: ${step.message}`, step.duration_ms);
+            }
+        }
+
+        // Render final result
+        function renderResult(res) {
+            // Save thread ID
+            if (res.thread_id) {
+                threadId = res.thread_id;
+                try {
+                    localStorage.setItem('agent_thread_id', threadId);
+                } catch (e) {
+                    console.warn("Could not save to localStorage:", e);
+                }
+            }
+
+            // Display Answer Card
+            answerCard.classList.remove('hidden');
+            answerText.innerText = res.answer;
+
+            // Render SQL query
+            if (res.sql) {
+                sqlBox.classList.remove('hidden');
+                sqlCode.innerText = res.sql;
+            } else {
+                sqlBox.classList.add('hidden');
+            }
+
+            // Render data table
+            if (res.execution && res.execution.rows && res.execution.rows.length > 0) {
+                tableContainer.classList.remove('hidden');
+                renderTable(res.execution.columns, res.execution.rows);
+            } else {
+                tableContainer.classList.add('hidden');
+            }
+
+            // Render follow-ups
+            if (res.follow_ups && res.follow_ups.length > 0) {
+                followupsSection.classList.remove('hidden');
+                followupsList.innerHTML = '';
+                res.follow_ups.forEach(q => {
+                    const pill = document.createElement('button');
+                    pill.className = 'followup-pill';
+                    pill.innerText = q;
+                    pill.addEventListener('click', () => askQuestion(q));
+                    followupsList.appendChild(pill);
+                });
+            } else {
+                followupsSection.classList.add('hidden');
+            }
+        }
+
+        // Render rows and columns in grid table
+        function renderTable(columns, rows) {
+            tableHead.innerHTML = '';
+            tableBody.innerHTML = '';
+
+            // Header row
+            const trHead = document.createElement('tr');
+            columns.forEach(col => {
+                const th = document.createElement('th');
+                th.innerText = col.name;
+                trHead.appendChild(th);
+            });
+            tableHead.appendChild(trHead);
+
+            // Data rows
+            rows.forEach(row => {
+                const tr = document.createElement('tr');
+                columns.forEach(col => {
+                    const td = document.createElement('td');
+                    td.innerText = row[col.name] !== null ? row[col.name] : '-';
+                    tr.appendChild(td);
+                });
+                tableBody.appendChild(tr);
+            });
+        }
+
+        // Handle error displays
+        function showError(message) {
+            console.error("Agent execution failed:", message);
+            addThoughtStep('error', 'error', `Agent execution failed: ${message}`);
+            
+            // Show global error box
+            const boundary = document.getElementById('js-error-boundary');
+            const msgSpan = document.getElementById('js-error-msg');
+            if (boundary && msgSpan) {
+                boundary.style.display = 'block';
+                msgSpan.innerText = message;
+            }
+            
+            answerCard.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
