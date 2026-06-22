@@ -50,3 +50,11 @@ nul
 # ---------- Databases ----------
 *.db
 
+# ---------- Media ----------
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+
+

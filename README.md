@@ -1,3 +1,12 @@
+---
+title: Sql Database Agent Backend
+emoji: 🤖
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+---
+
 # 🤖 SQL Database Agent
 
 An advanced, production-grade Natural Language to SQL (NL2SQL) agent built with **FastAPI** and **LangGraph**. It automatically discovers database schemas, safely generates and validates SQL queries, self-heals syntax or execution errors via a repair loop, and generates natural-language explanations and interactive charts.
