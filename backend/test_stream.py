@@ -8,7 +8,7 @@ def test_stream():
         "thread_id": "test_stream_123",
         "sample_size": 5
     }
-    with httpx.stream("POST", url, json=payload) as response:
+    with httpx.stream("POST", url, json=payload, timeout=60.0) as response:
         print(f"Status Code: {response.status_code}")
         for line in response.iter_lines():
             if line:

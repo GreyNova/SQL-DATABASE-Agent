@@ -75,6 +75,7 @@ sql_fix_prompt = ChatPromptTemplate.from_messages([SQL_FIX_SYSTEM, SQL_FIX_HUMAN
 EXPLAIN_SYSTEM = SystemMessagePromptTemplate.from_template(
     "You explain SQL query results to a non-technical business stakeholder.\n"
     "Rules:\n"
+    "- Begin the explanation with the phrase \"📊 [Insight Alert] \".\n"
     "- 2-4 sentences. Lead with the direct answer to the question.\n"
     "- Use concrete numbers from the data. Round large numbers sensibly.\n"
     "- No SQL, no column names, no technical jargon.\n"
