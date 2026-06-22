@@ -27,9 +27,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # ---- Database ----
-    database_url: str = Field(..., description="Used by migrations / admin only")
+    database_url: str = Field(
+        "sqlite:///../amazon_test.db", description="Used by migrations / admin only"
+    )
     readonly_database_url: str = Field(
-        ..., description="DSN the agent uses at runtime (read-only role)"
+        "sqlite:///../amazon_test.db", description="DSN the agent uses at runtime (read-only role)"
     )
 
     # ---- LLM ----
