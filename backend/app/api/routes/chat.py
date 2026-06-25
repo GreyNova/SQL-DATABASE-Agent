@@ -19,6 +19,8 @@ async def chat(req: ChatRequest) -> ChatResponse:
         return run_agent(req.question, req.thread_id, req.sample_size)
     except Exception as e:  # surfaced as a clean 400 with context
         from app.core.config import settings
+        import logging
+        logging.getLogger("app").exception("Error in chat endpoint")
 
         detail = str(e) if settings.app_debug else e.__class__.__name__
         return _error_response(detail, "agent")  # type: ignore[return-value]
@@ -38,6 +40,8 @@ async def chat_stream(req: ChatRequest) -> EventSourceResponse:
                 yield {"event": event, "data": data}
         except Exception as e:
             from app.core.config import settings
+            import logging
+            logging.getLogger("app").exception("Error in chat_stream generator")
 
             detail = str(e) if settings.app_debug else e.__class__.__name__
             yield {
